@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_snc_jwt_lib.validate</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description>Provides JWT validation functions</description>
+        <name>validate</name>
+        <script><![CDATA[var validate = Class.create();
+validate.prototype = Object.extendsObject(x_snc_jwt_lib.core, {
+	RAWTOKEN: '',
+	TOKEN_HEADER: {},
+	TOKEN_PAYLOAD: {},
+	TOKEN_SIGN: '',
+	// if a token is provided, initialize with it: 
+	initialize: function( token ){
+		token = token || null;
+		if( token !== null ){
+			this.RAWTOKEN = token;
+			this.processToken();
+		}
+	},
+	// processes the token into objects
+	processToken: function( token ){
+		token = token || this.RAWTOKEN || null; 
+		var parts = token.trim().split('.');
+		if( parts.length !== 3 ){
+			// token is invalid as provided
+			throw new Error('Token provided in an invalid format!');
+		}
+		// replace object data with this token
+		this.TOKEN_HEADER = JSON.parse( this.base64urldecode(parts[0]) );
+		this.TOKEN_PAYLOAD = JSON.parse( this.base64urldecode(parts[1]) );
+		return parts;
+	},
+	getPayload: function(){
+		return this.TOKEN_PAYLOAD;
+	},
+	/**
+     *	Verifies key compnents of a token: 
+	 *   - Signature provided matches expected computed signature
+     *
+     **/
+	verifySignature: function( rawtoken , secret ) {
+		// split the message by the periods (expect 3 parts returned) (trim whitespace)
+		try {
+			var parts = this.processToken( rawtoken );
+
+			// decode the header, payload, and signature
+			var algorithm = false;
+			var header = JSON.parse( this.base64urldecode(parts[0]) );
+			// is this an object?
+			if (typeof header == "object") {
+				// is this a JWT? 
+				if (this._isvalidTyp(header)) {
+					// validate the specified algorithm
+					algorithm = this._getAlgo(header);
+					// get the signature
+					var signature = this.unformatSignature(parts[2]);
+					// verify the signature matches
+					var signature_is_valid = this._checkSignature(parts[0] + '.' + parts[1], signature, algorithm, secret);
+
+					if( signature_is_valid === true ){
+						return true;
+					} else {
+						// signature is not valid
+						throw new Error('The token signature is not valid.');
+					}
+				} else {
+					//not a valid type in header
+					throw new Error('The token type is not valid.');
+				}
+			}
+		} catch (e) {
+			gs.error("An error was encountered while validating a token: {0}", e);
+			return false;
+		}
+	},
+	/**
+	 *   Validates claims made in the token payload:
+	 *   - Issued at (iat) in the past 
+	 *   - Expires on (exp) in the future 
+	 *   - Audience (aud) matches our instance name
+	 * 
+	 */
+	validateClaims: function( rawtoken ){
+		rawtoken = rawtoken || null;
+		try {
+			if( rawtoken !== null ){
+				// token provided as param, process it into this object
+				this.processToken( rawtoken );
+			} 
+			// check for token payload and process it
+			if( this.TOKEN_PAYLOAD && typeof this.TOKEN_PAYLOAD == "object" && this.TOKEN_PAYLOAD !== {} ){
+				var payload = this.TOKEN_PAYLOAD;
+				// token payload is set, verify the claims present
+				// is this token expired? 
+				if (this._isvalidExp(payload)) {
+					// this token has not expired
+					if (this._isvalidIat(payload)) {
+						// this token does not have an invalid issuance time
+						if(this._isValidAud(payload)){
+							// this token's audience matches this instance name
+							return true;
+						} else {
+							// invalid audience
+							throw new Error('The token provided is not valid for use on this instance.');
+						}
+					} else {
+						// token is not valid yet (nbf > current time)
+						throw new Error('The token provided is not valid yet.');
+					}
+				} else {
+					// token has expired
+					throw new Error('The token provided is invalid as it has expired.');
+				}
+			} else {
+				// no token was found
+				throw new Error('No token was provided.');
+			}
+		} catch(e){
+			gs.error("An error was encountered while validating a token's claims: {0}", e);
+			return false;
+		}
+	},
+	/**
+     * Determines if the header contains a valid `typ` value (only JWTs supported)
+     *
+     */
+	_isvalidTyp: function(header) {
+		return (header.hasOwnProperty('typ') && header.typ == "JWT");
+	},
+	/** Determines if the token has passed its expiration date **/
+	_isvalidExp: function(payload , reject_if_null) {
+		reject_if_null = reject_if_null || -1;
+		if (payload.hasOwnProperty('exp')) {
+			var time_ms = payload.exp * 1000;
+			// 			gs.info("The timecode found in the token is: {0} / converted to ms: {1}", payload.exp , time_ms);
+			var exp = new GlideDateTime();
+			exp.setValue(time_ms);
+			return exp.after(new GlideDateTime());
+		} else {
+			// no expiration
+			
+			// this will return TRUE (allow) iff:
+			//   reject_if_null is not equal to boolean true 
+			//        AND
+			//   reject_if_null is not equal to -1 
+			//   (its default value when no parameter is provided)
+			//
+			// otherwise, it will return FALSE (deny)
+			
+			return (reject_if_null !== true && reject_if_null !== -1);
+		}
+	},
+	/** Determines if the token was issued prior to now **/
+	_isvalidIat: function(payload) {
+		if (payload.hasOwnProperty('iat')) {
+			var time_ms = payload.iat * 1000;
+			var iat = new GlideDateTime();
+			iat.setValue(time_ms);
+			return iat.before(new GlideDateTime());
+		} else {
+			// no issued at time
+			
+			// this will return TRUE (allow) iff:
+			//   all conditions
+			
+			return true;
+		}
+	},
+	/** Determines if the token was issued for this instance **/
+	_isValidAud: function(payload){
+		var tag = 'aud';
+		// ensure the property exists
+		if( payload.hasOwnProperty(tag) ){
+			// get this instance's name
+			var inst_name = gs.getProperty('instance_name', null);
+			if( inst_name === null ){
+				// instance name not found, return false to fail this
+				return false;
+			} else {
+				// instance name found, get the value of aud and compare
+				var aud = payload[tag].trim();
+				return (aud === inst_name);
+			}
+		} else {
+			// no audience tag
+			
+			// DENY
+			return false;
+		}
+	},
+	/** Determines the signing algorithm for the token **/
+	_getAlgo: function(header) {
+		if (!header.hasOwnProperty('alg')) {
+			throw new Error('No support for unsigned tokens! Supported signing algorithms: {0}', JSON.stringify(this.ALG_MAP));
+		}
+		// get the algo from the header
+		// is the algo supported? 
+		if (this.ALG_MAP.hasOwnProperty(header.alg)) {
+			return this.ALG_MAP[header.alg];
+		} else {
+			throw new Error('Invalid algorithm provided. Supported algorithms: {0}', JSON.stringify(this.ALG_MAP));
+		}
+
+	},
+	/** Uses the internal CertificateEncryption().generateMac function to calculate the expected signature for this message **/
+	_checkSignature: function(payload, signature, algorithm, secret) {
+		// generate the signature with the known-valid key
+		var ce = new CertificateEncryption();
+		return (ce.generateMac(this.base64urlencode(secret), algorithm, payload) == signature);
+	},
+
+	type: 'validate'
+});]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2022-02-14 19:03:46</sys_created_on>
+        <sys_id>029fea2fb4e101107f44092baed85046</sys_id>
+        <sys_name>validate</sys_name>
+        <sys_package display_value="JWT Library" source="x_snc_jwt_lib">3d17a56adb717b00c24df78eaf961906</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="JWT Library">3d17a56adb717b00c24df78eaf961906</sys_scope>
+        <sys_update_name>sys_script_include_029fea2fb4e101107f44092baed85046</sys_update_name>
+    </sys_script_include>
+</record_update>
