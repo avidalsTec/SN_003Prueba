@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_snc_jwt_lib.zoom</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description>Zoom-specific JWT functionality and helper functions</description>
+        <name>zoom</name>
+        <script><![CDATA[var zoom = Class.create();
+zoom.prototype = Object.extendsObject(x_snc_jwt_lib.core , {
+	HEADER: {
+		"alg": "HS256", /// Zoom API uses HMAC SHA256
+		"typ": "JWT" // This is always set to JWT
+	},
+	initialize: function() {
+		this.ALGORITHM = 'HmacSHA256';
+	},
+	// Generate the token for use with Zoom
+	// @param string api_key Zoom API Key
+	// @param string secret Zoom API Secret
+	// @param integer life_seconds Number of seconds the token should be valid for (default: 30)
+	// @returns string JSON web token, ready for use
+	generateToken: function( api_key , secret , life_seconds){
+		life_seconds = life_seconds || 30;
+		try {
+			// set the issuer field
+			this.setIssuer( api_key );
+			// set the token's lifespan
+			this.setLifespan( life_seconds );
+			// create the token and return it
+			return this.getToken( secret );
+		} catch(e){
+			gs.error("Error encountered: " + e );
+		}
+	},
+	type: 'zoom',
+});]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>chris.webster</sys_created_by>
+        <sys_created_on>2019-06-05 16:40:19</sys_created_on>
+        <sys_id>7937a96adb717b00c24df78eaf961933</sys_id>
+        <sys_name>zoom</sys_name>
+        <sys_package display_value="JWT Library" source="x_snc_jwt_lib">3d17a56adb717b00c24df78eaf961906</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="JWT Library">3d17a56adb717b00c24df78eaf961906</sys_scope>
+        <sys_update_name>sys_script_include_7937a96adb717b00c24df78eaf961933</sys_update_name>
+    </sys_script_include>
+</record_update>

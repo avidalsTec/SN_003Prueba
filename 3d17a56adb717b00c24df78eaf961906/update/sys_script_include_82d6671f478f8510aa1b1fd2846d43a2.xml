@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_snc_jwt_lib.clabs</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description>JWT functions for use with Cloud Labs</description>
+        <name>clabs</name>
+        <script><![CDATA[var clabs = Class.create();
+clabs.prototype = Object.extendsObject(x_snc_jwt_lib.core, {
+	initialize: function() {
+	},
+	//
+	// Generates a JWT for use with TokenClient authentication
+	//
+	// Parameters:
+	//
+	//   instance_name   Name of the target instance, as found in its system property "instance_name"
+	//
+	//   user_name       user_name of the sys_user record on the target instance to authenticate as
+	//
+	//   secret          Secret shared with the target instance, as found in its system property "x_snc_tokenclient.secret_key"
+	//
+	//   valid_length    Length of time the token should be valid, in seconds. (Minimum 30 seconds)
+	//
+	//                     Default: 3600 (1 hour)
+	//
+	//
+	makeLoginToken: function( instance_name , user_name , secret , valid_length ){
+		valid_length = (valid_length && valid_length >= 30 ? valid_length : 3600);
+		if( gs.nil( instance_name ) || gs.nil(user_name) || gs.nil(secret) ){
+			// fail
+			gs.error('Unable to complete makeLoginToken with data provided (one or more required parameters were empty)');
+			return false;
+		} else {
+			// we have good data, make the token
+			this.setRawPayload({'aud': instance_name, 'sub': user_name});
+			this.setLifespan( valid_length );
+			return this.getToken(secret);
+		}
+	},
+	makeLoginLink: function( base_url , token_parameter , token ){
+		return base_url + "/?" + token_parameter + "=" + token;
+	},
+	type: 'clabs'
+});]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>admin</sys_created_by>
+        <sys_created_on>2022-04-29 18:01:10</sys_created_on>
+        <sys_id>82d6671f478f8510aa1b1fd2846d43a2</sys_id>
+        <sys_name>clabs</sys_name>
+        <sys_package display_value="JWT Library" source="x_snc_jwt_lib">3d17a56adb717b00c24df78eaf961906</sys_package>
+        <sys_policy>read</sys_policy>
+        <sys_scope display_value="JWT Library">3d17a56adb717b00c24df78eaf961906</sys_scope>
+        <sys_update_name>sys_script_include_82d6671f478f8510aa1b1fd2846d43a2</sys_update_name>
+    </sys_script_include>
+</record_update>
